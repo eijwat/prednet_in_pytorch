@@ -103,7 +103,7 @@ If the initial value is fixed, stable learning can be achieved.
 $ python PredNet/main.py -i YOUR_DATA/train_list.txt --initmodel models/YOUR_INITIAL_MODEL
 
 56_1945_5000.pth
-"in https://doi.org/10.6084/m9.figshare.12318950.v2"
+in "https://doi.org/10.6084/m9.figshare.12318950.v2"
 is an initial value for easy reproduction of the snake rotation illusion.
 
 
