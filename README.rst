@@ -109,6 +109,19 @@ is an initial value for easy reproduction of the snake rotation illusion.
 
 
 ================================
+Sample Weight Models and Training data
+================================
+[Sample Weight Models]
+Watanabe, Eiji (2021): Sample Weight Models for PredNet in Pytorch (Rotating Snake Illusions). figshare. Dataset.
+https://doi.org/10.6084/m9.figshare.16572065.v1 
+
+[Training_data]
+Watanabe, Eiji (2017): Training_data (Front. Psychol., 15 March 2018). figshare. Media. 
+https://doi.org/10.6084/m9.figshare.5483668.v4 
+
+
+
+================================
 For Deterministic learning
 ================================
 Deep learning is also highly dependent on the GPU.
