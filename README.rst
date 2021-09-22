@@ -36,15 +36,15 @@ Preparing data
 Put the target video file "YOUR_VIDEO" in "YOUR_DATA" folder.
 Execute the following command to generate still images from the video.
 
- $ python PredNet/generate_image.py YOUR_DATA/YOUR_VIDEO -d YOUR_DATA
+ $ python generate_image.py YOUR_DATA/YOUR_VIDEO -d YOUR_DATA
 
 To change the width of the image, use the -w option.
 
- $ python PredNet/generate_image.py YOUR_DATA/YOUR_VIDEO -d YOUR_DATA -w 160
+ $ python generate_image.py YOUR_DATA/YOUR_VIDEO -d YOUR_DATA -w 160
 
 To change the width of the image, use the -g option.
 
- $ python PredNet/generate_image.py data/YOUR_VIDEO -d data -w 160 -g 120
+ $ python generate_image.py data/YOUR_VIDEO -d data -w 160 -g 120
 
 "train_list.txt" describing the list of files used for training
 and "test_list.txt" describing the list of files used for testing are saved in YOUR_DATA folder.
@@ -65,7 +65,7 @@ Training
 ================================
 Execute the following command for training.
 
- $ python PredNet/main.py -i YOUR_DATA/train_list.txt
+ $ python main.py -i YOUR_DATA/train_list.txt
 
 
 The learning models are saved in "models" folder.
@@ -80,10 +80,13 @@ data4/train_list.txt
 ....
 and then, execute the following command.
 
- $ python PredNet/main.py -seq sequence_list.txt -g 0
+ $ python main.py -seq sequence_list.txt
+
+We recommend using --lr_rate option.
+$ python main.py -i YOUR_DATA/train_list.txt --lr_rate 0.9
 
 
-If you train from dB files, execute the following command.
+If you train from dB files (sound file), execute the following command.
 
  $ python main.py --channels 2,48,96,192 --size 160,512
 
@@ -95,12 +98,9 @@ MSE will be written in log_t.txt.
 Training using an Initial model
 ================================
 Deep learning is highly dependent on initial values.
-Reference:
-Impact of GPU uncertainty on the training of predictive deep neural networks.
-"https://arxiv.org/abs/2109.01451"
 
 If the initial value is fixed, stable learning can be achieved.
-$ python PredNet/main.py -i YOUR_DATA/train_list.txt --initmodel models/YOUR_INITIAL_MODEL
+$ python main.py -i YOUR_DATA/train_list.txt --initmodel models/YOUR_INITIAL_MODEL
 
 56_1945_5000.pth
 in "https://doi.org/10.6084/m9.figshare.12318950.v2"
@@ -111,10 +111,7 @@ is an initial value for easy reproduction of the snake rotation illusion.
 ================================
 For Deterministic learning
 ================================
-Deep learning is also highly dependent on GPU.
-Reference:
-Impact of GPU uncertainty on the training of predictive deep neural networks.
-"https://arxiv.org/abs/2109.01451"
+Deep learning is also highly dependent on the GPU.
 
 For deterministic learning, use
 "torch.backends.cudnn.enabled = False" command,
@@ -182,15 +179,27 @@ $ python3 generate_spectrum.py wave_to_db data --merge --skip_size 160
 Gray scale images and 4ch (RGB+Gray) images
 ================================
 Gray scale training
- $ pyton main.py --channels 1,48,96,192
+ $ python main.py --channels 1,48,96,192
 4ch training
- $ pyton main.py --channels 4,48,96,192
+ $ python main.py --channels 4,48,96,192
  
 Gray scale testing
  $ python main.py --test --images data/train_list.txt --channels 1,48,96,192 --initmodel models/10000.pth
 4ch testing
  $ python main.py --test --images data/train_list.txt --channels 4,48,96,192 --initmodel models/10000.pth
 
+
+================================
+Color space option (Future plan)
+================================
+You can use the color space option.
+RGB, HSV, LAB, CMYK, YcbCr (RGC=default)
+
+Example:
+ $ python3 main.py --color_space HSV
+ $ python3 main.py  --color_space CMYK --channels 4,48,96,192
+
+Note that the dimension of the channels option and the dimension of the color space must be aligned.
 
 
 ================================
@@ -328,4 +337,6 @@ Application to the study of the visual system
 ================================
 Illusory Motion Reproduced by Deep Neural Networks Trained for Prediction
 https://doi.org/10.3389/fpsyg.2018.00345
+
+
 
