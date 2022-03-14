@@ -1,7 +1,8 @@
 import os
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageCms
 import torch
+import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.optim import lr_scheduler
@@ -14,6 +15,7 @@ import datetime
 from tqdm import tqdm
 from distutils.util import strtobool
 from dataset import ImageListDataset
+from corr_wise import CorrWise
 
 parser = argparse.ArgumentParser(description='PredNet')
 parser.add_argument('--images', '-i', default='data/train_list.txt', help='Path to image list file')
@@ -45,7 +47,7 @@ parser.add_argument('--saveimg', dest='saveimg', action='store_true')
 parser.add_argument('--useamp', dest='useamp', action='store_true', help='Flag for using AMP')
 parser.add_argument('--lr', default=0.001, type=float,
                     help='Learning rate')
-parser.add_argument('--lr_rate', default=0.9, type=float,
+parser.add_argument('--lr_rate', default=1.0, type=float,
                     help='Reduction rate for Step lr scheduler')
 parser.add_argument('--min_lr', default=0.0001, type=float,
                     help='Lower bound learning rate for Step lr scheduler')
@@ -54,6 +56,8 @@ parser.add_argument('--shuffle', default=False, type=strtobool, help=' True is e
 parser.add_argument('--num_workers', default=0, type=int, help='Num. of dataloader process. (default: num of cpu cores')
 parser.add_argument('--tensorboard', dest='tensorboard', action='store_true', help='True is enable to log for Tensorboard')
 parser.add_argument('--up_down_up', action='store_true', help='True is enable to cycle up-down-up in order')
+parser.add_argument('--color_space', default='RGB', type=str, help='Image color space(RGB, HSV, LAB, CMYK, YcbCr) - the dimension of this color space and 1st channel must be same.')
+parser.add_argument('--loss', type=str, default='mse', help='Loss name for training. Please select loss from "mse", "corr_wise", and "ensemble" (default: mse).')
 parser.set_defaults(test=False)
 args = parser.parse_args()
 
@@ -66,25 +70,37 @@ def load_list(path, root):
     return tuples
 
 
-def write_image(image, path, mode="img"):
+srgb_p = ImageCms.createProfile("sRGB")
+lab_p  = ImageCms.createProfile("LAB")
+lab2rgb = ImageCms.buildTransformFromOpenProfiles(lab_p, srgb_p, "LAB", "RGB")
+
+def write_image(image, path, mode="img", c_space="RGB"):
     if mode == "img":
         img = image * 255
         img = img.transpose(1, 2, 0)
         img = img.astype(np.uint8)
         h, w, ch = img.shape
-        if ch == 1:
-            img = img.reshape((h, w))
-            result = Image.fromarray(img)
+        if c_space == "RGB":
+            if ch == 1:
+                img = img.reshape((h, w))
+                result = Image.fromarray(img)
+                result.save(path + ".jpg")
+            elif ch == 4:
+                img_gray = img[:, :, 3]
+                img_color = img[:, :, :3]
+                result_gray = Image.fromarray(img_gray)
+                result_color = Image.fromarray(img_color)
+                result_gray.save(path + "_gray.jpg")
+                result_color.save(path + "_color.jpg")
+            else:
+                result = Image.fromarray(img)
+                result.save(path + ".jpg")
+        elif c_space == "LAB":
+            tmp = Image.fromarray(img, mode="LAB")
+            result = ImageCms.applyTransform(tmp, lab2rgb)
             result.save(path + ".jpg")
-        elif ch == 4:
-            img_gray = img[:, :, 3]
-            img_color = img[:, :, :3]
-            result_gray = Image.fromarray(img_gray)
-            result_color = Image.fromarray(img_color)
-            result_gray.save(path + "_gray.jpg")
-            result_color.save(path + "_color.jpg")
         else:
-            result = Image.fromarray(img)
+            result = Image.fromarray(img, mode=c_space).convert("RGB")
             result.save(path + ".jpg")
     else:
         np.save(path + ".npy", image)
@@ -122,6 +138,9 @@ def train(device=torch.device("cpu")):
     net = prednet.PredNet(args.channels,
                           round_mode="up_donw_up" if args.up_down_up else "down_up_down",
                           device=device).to(device)
+
+    base_loss = nn.L1Loss()
+    loss = CorrWise(base_loss, flow_method="FBFlow", return_warped=False, reduction_clip=False, flow_cycle_loss=True, scale_clip=True, device=device)
     if args.initmodel:
         print('Load model from', args.initmodel)
         net.load_state_dict(torch.load(args.initmodel))
@@ -136,7 +155,7 @@ def train(device=torch.device("cpu")):
     imagelist = load_list(sequencelist[seq], args.root)
     img_dataset = ImageListDataset(img_size=(args.size[0],args.size[1]),
                                    input_len=args.bprop, channels=args.channels[0])
-    img_dataset.load_images(img_paths=imagelist)
+    img_dataset.load_images(img_paths=imagelist, c_space=args.color_space)
     # data loader
     data_loader = DataLoader(img_dataset, batch_size=args.batchsize, shuffle=args.shuffle, num_workers=args.num_workers)
     print("shuffle: ", args.shuffle)
@@ -148,7 +167,7 @@ def train(device=torch.device("cpu")):
             # update dataset and loader 
             img_dataset = ImageListDataset(img_size=(args.size[0],args.size[1]),
                                     input_len=args.bprop, channels=args.channels[0])
-            img_dataset.load_images(img_paths=imagelist)
+            img_dataset.load_images(img_paths=imagelist, c_space=args.color_space)
             data_loader = DataLoader(img_dataset, batch_size=args.batchsize, shuffle=args.shuffle, num_workers=args.num_workers)
 
         if len(imagelist) == 0:
@@ -159,12 +178,16 @@ def train(device=torch.device("cpu")):
             print("frameNo: {}".format(fn))
             print("total frames: {}".format(count))
             with torch.cuda.amp.autocast(enabled=args.useamp):
-                pred, errors, _ = net(data.to(device))
-                mean_error = errors.mean()
-            # loc_batch = losses.size(0)
-            # errors = torch.mm(losses.view(-1, args.bprop), time_loss_weights)
-            # errors = torch.mm(errors.view(loc_batch, -1), layer_loss_weights)
-            # errors = torch.mean(errors)
+                data = data.to(device)
+                pred, errors, _ = net(data)
+                if args.loss == 'corr_wise':
+                    mean_error= loss(pred, data[:, -1])
+                elif args.loss == 'ensemble':
+                    corr_wise_error = loss(pred, data[:, -1])
+                    mean_error = corr_wise_error + errors.mean()
+                else:
+                    mean_error = errors.mean()
+                
             optimizer.zero_grad()
             scaler.scale(mean_error).backward()
             scaler.step(optimizer)
@@ -176,9 +199,9 @@ def train(device=torch.device("cpu")):
             if args.saveimg:
                 for j in range(len(data)):
                     write_image(data[j, -1].detach().cpu().numpy(), 'result/' + str(count) + '_' + str(fn / args.input_len + j) + 'x',
-                                img_dataset.mode)
+                                img_dataset.mode, args.color_space)
                     write_image(pred[j].detach().cpu().numpy(), 'result/' + str(count) + '_' + str(fn / args.input_len + j) + 'y',
-                                img_dataset.mode)
+                                img_dataset.mode, args.color_space)
             print("loss: ", mean_error.detach().cpu().numpy())
             logf.write(str(count) + ', ' + str(mean_error.detach().cpu().numpy()) + '\n')
             if writer is not None:
@@ -227,7 +250,7 @@ def test(device=torch.device("cpu")):
         # update dataset and loader 
         img_dataset = ImageListDataset(img_size=(args.size[0],args.size[1]),
                                        input_len=args.input_len, channels=args.channels[0])
-        img_dataset.load_images(img_paths=imagelist)
+        img_dataset.load_images(img_paths=imagelist, c_space=args.color_space)
         data_loader = DataLoader(img_dataset, batch_size=args.batchsize, shuffle=False, num_workers=args.num_workers)
                
         if len(imagelist) == 0:
@@ -242,9 +265,9 @@ def test(device=torch.device("cpu")):
                         with torch.cuda.amp.autocast(enabled=args.useamp):
                             pred, errors, eval_index = net(x_batch.to(device))
                     write_image(data[j, k].detach().cpu().numpy(), 'result/test_' + str(k + (i * args.batchsize + j) * args.input_len ) + 'x',
-                                img_dataset.mode)
+                                img_dataset.mode, args.color_space)
                     write_image(pred[0].detach().cpu().numpy(), 'result/test_' + str(k + (i * args.batchsize + j) * args.input_len ) + 'y_0',
-                                img_dataset.mode)
+                                img_dataset.mode, args.color_space)
                     if writer is not None:
                         prefix = f"test_{i}_{j}"
                         write_outputs(writer, net.outputs, k, prefix)
@@ -259,7 +282,7 @@ def test(device=torch.device("cpu")):
                         pred_ext, _, _ = net(torch.cat([x_batch.to(device)] + exts + [y_batch.to(device)], axis=1))
                     exts.append(pred_ext.unsqueeze(0))
                     write_image(pred_ext[0].detach().cpu().numpy(), 'result/test_' + str((i * args.batchsize + j + 1) * args.input_len - 1) + 'y_' + str(k + 1),
-                                img_dataset.mode)
+                                img_dataset.mode, args.color_space)
                     if writer is not None:
                         prefix = f"text_ext_{i}_{j}"
                         write_outputs(writer, net.outputs, k, prefix)
