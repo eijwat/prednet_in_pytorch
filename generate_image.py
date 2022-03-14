@@ -63,7 +63,7 @@ while True:
     if args.flip:
         image = cv2.flip(image, 1)
     for n in range(args.n_copy):
-        files.append(os.path.join(args.dir, "%s_%08d_%03d.jpg" % (args.prefix, count, n)))
+        files.append(os.path.join(args.dir, "%s_%05d_%03d.jpg" % (args.prefix, count, n)))
         sys.stdout.write('\rSave {}'.format(files[-1]))
         sys.stdout.flush()
         if args.width > 0:

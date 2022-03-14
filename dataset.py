@@ -1,30 +1,39 @@
 import os
 import random
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageCms
 
-import torch
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
 
-def read_image(path, size, ch):
+srgb_p = ImageCms.createProfile("sRGB")
+lab_p  = ImageCms.createProfile("LAB")
+rgb2lab = ImageCms.buildTransformFromOpenProfiles(srgb_p, lab_p, "RGB", "LAB")
+
+def read_image(path, size, ch, c_space="RGB"):
     if os.path.splitext(path)[-1] == ".jpg":
         img = Image.open(path)
         img_resize = img.resize(size)
         w, h = size
-        if ch == 1: # gray scale mode
-            img_gray = img_resize.convert("L")
-            image = np.asarray(img_gray).reshape((h, w, 1)).transpose(2, 0, 1).astype(np.float32)
-        elif ch == 4: # color + gray scale mode
-            img_gray = img_resize.convert("L")
-            color_array = np.asarray(img_resize).transpose(2, 0, 1).astype(np.float32)
-            gray_array = np.asarray(img_gray).reshape((h, w, 1)).transpose(2, 0, 1).astype(np.float32)
-            image = np.concatenate([color_array, gray_array], 0)
-        else: # color mode
-            image = np.asarray(img_resize).transpose(2, 0, 1).astype(np.float32)
-
-         # print(image.shape)
+        if c_space == "RGB":
+            if ch == 1: # gray scale mode
+                img_gray = img_resize.convert("L")
+                image = np.asarray(img_gray).reshape((h, w, 1)).transpose(2, 0, 1).astype(np.float32)
+            elif ch == 4: # color + gray scale mode
+                img_gray = img_resize.convert("L")
+                color_array = np.asarray(img_resize).transpose(2, 0, 1).astype(np.float32)
+                gray_array = np.asarray(img_gray).reshape((h, w, 1)).transpose(2, 0, 1).astype(np.float32)
+                image = np.concatenate([color_array, gray_array], 0)
+            else: # color mode
+                image = np.asarray(img_resize).transpose(2, 0, 1).astype(np.float32)
+        elif c_space == "LAB":
+            # Convert to Lab color rspace
+            img_conv = ImageCms.applyTransform(img_resize, rgb2lab)
+            image = np.asarray(img_conv).transpose(2, 0, 1).astype(np.float32)
+        else:
+            img_conv = img_resize.convert(c_space)
+            image = np.asarray(img_conv).transpose(2, 0, 1).astype(np.float32)
         image /= 255
         return image
     else:
@@ -40,10 +49,12 @@ class ImageListDataset(Dataset):
         self.img_ch = channels
         self.image_paths = None
         self.mode = None
+        self.c_space = "RGB"
 
-    def load_images(self, img_paths):
+    def load_images(self, img_paths, c_space="RGB"):
         self.img_paths = img_paths
         self.mode = "img" if os.path.splitext(self.img_paths[0])[-1] == ".jpg" else "audio"
+        self.c_space = c_space
 
     def __getitem__(self, index):
         # print("target_idx: ", index)
@@ -52,8 +63,8 @@ class ImageListDataset(Dataset):
         assert self.img_paths is not None
 
         X = np.ndarray((1, self.input_len, self.img_ch, self.img_h, self.img_w), dtype=np.float32)
-        X[0] = [read_image(path, (self.img_w, self.img_h), self.img_ch) for path in self.img_paths[int(index * self.input_len):int((index + 1) * self.input_len)]]
-        y = np.array([[read_image(self.img_paths[int((index + 1) * self.input_len)], (self.img_w, self.img_h), self.img_ch)]])
+        X[0] = [read_image(path, (self.img_w, self.img_h), self.img_ch, self.c_space) for path in self.img_paths[int(index * self.input_len):int((index + 1) * self.input_len)]]
+        y = np.array([[read_image(self.img_paths[int((index + 1) * self.input_len)], (self.img_w, self.img_h), self.img_ch, self.c_space)]])
         return np.concatenate([X, y], axis=1).reshape(self.input_len+1, self.img_ch, self.img_h, self.img_w)
 
     def __len__(self):
