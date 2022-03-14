@@ -1,6 +1,6 @@
 PredNet in PyTorch
 ================================
-Kenta Tanaka, Manabu Kosaka & Eiji Watanabe, 2021
+Kenta Tanaka, Manabu Kosaka & Eiji Watanabe, 2022
 
 
 
@@ -147,12 +147,12 @@ Furthermore, for each length of the input image, images (test_#y_1.jpg, test_#y_
 
 
 MSE will be written in log_p.txt.
-Prediction No., layer 0, , layer 1, , layer 2, â€¦..layer N
+Prediction No., layer 0, , layer 1, , layer 2, c..layer N
 0, 0.0031956271, 0.35379273, 2.6571014, 55.848083
 1, 0.0028550925, 0.5585071, 3.421459, 66.66583
 2, 0.0021151432, 0.666777, 3.945024, 72.83869
 3, 0.002280742, 0.65848637, 4.119229, 75.80301
-â€¦...
+c...
 
 
 
@@ -160,10 +160,10 @@ Prediction No., layer 0, , layer 1, , layer 2, â€¦..layer N
 Prediction by x only
 ================================
 Default
-f(x0)=y0ã€f(x1,y0)=y1, f(x2,y1)=y2, â€¦
+f(x0)=y0Af(x1,y0)=y1, f(x2,y1)=y2, c
 
 --prediction_by_x_only
-f(x0)=y0ã€f(x0, x1)=y1, f(x0, x1, x2)=y2...
+f(x0)=y0Af(x0, x1)=y1, f(x0, x1, x2)=y2...
 
 
 
@@ -218,7 +218,7 @@ Note that the dimension of the channels option and the dimension of the color sp
 ================================
 UP-DOWN-UP learning
 ================================
-â€œPOSTDICTIONâ€ learning
+gPOSTDICTIONh learning
 $ python main.py --up_down_up
 
 
@@ -257,7 +257,7 @@ parser.add_argument('--saveimg', dest='saveimg', action='store_true')
 parser.add_argument('--useamp', dest='useamp', action='store_true', help='Flag for using AMP')
 parser.add_argument('--lr', default=0.001, type=float,
                     help='Learning rate')
-parser.add_argument('--lr_rate', default=0.9, type=float,
+parser.add_argument('--lr_rate', default=1.0, type=float,
                     help='Reduction rate for Step lr scheduler')
 parser.add_argument('--min_lr', default=0.0001, type=float,
                     help='Lower bound learning rate for Step lr scheduler')
@@ -266,6 +266,8 @@ parser.add_argument('--shuffle', default=False, type=strtobool, help=' True is e
 parser.add_argument('--num_workers', default=0, type=int, help='Num. of dataloader process. (default: num of cpu cores')
 parser.add_argument('--tensorboard', dest='tensorboard', action='store_true', help='True is enable to log for Tensorboard')
 parser.add_argument('--up_down_up', action='store_true', help='True is enable to cycle up-down-up in order')
+parser.add_argument('--color_space', default='RGB', type=str, help='Image color space(RGB, HSV, LAB, CMYK, YcbCr) - the dimension of this color space and 1st channel must be same.')
+parser.add_argument('--loss', type=str, default='mse', help='Loss name for training. Please select loss from "mse", "corr_wise", and "ensemble" (default: mse).')
 parser.set_defaults(test=False)
 args = parser.parse_args()
 
@@ -293,16 +295,16 @@ Example:
 The image will be output as "date_outputstep.jpg" under the directory of each layer name.
 
 <output_dir_path>
-â”œâ”€â”€ Conv_sequential_layer0_time0
-â”‚   â”œâ”€â”€ 2021-07-18_0step.jpg
-â”‚   â”œâ”€â”€ 2021-07-18_10000step.jpg
-â”‚   â””â”€â”€ 2021-07-18_20000step.jpg
+„¥„Ÿ„Ÿ Conv_sequential_layer0_time0
+„    „¥„Ÿ„Ÿ 2021-07-18_0step.jpg
+„    „¥„Ÿ„Ÿ 2021-07-18_10000step.jpg
+„    „¤„Ÿ„Ÿ 2021-07-18_20000step.jpg
 ~
 ~
-â””â”€â”€ UpdateA_layer2_time9
-â”œâ”€â”€ 2021-07-18_0step.jpg
-â”œâ”€â”€ 2021-07-18_10000step.jpg
-â””â”€â”€ 2021-07-18_20000step.jpg
+„¤„Ÿ„Ÿ UpdateA_layer2_time9
+„¥„Ÿ„Ÿ 2021-07-18_0step.jpg
+„¥„Ÿ„Ÿ 2021-07-18_10000step.jpg
+„¤„Ÿ„Ÿ 2021-07-18_20000step.jpg
 
 
 
@@ -324,6 +326,18 @@ from csv to pth
 Sample Code;
 
  $ python3 csv_serializer.py csv_to_pth model_x -dir model_x_folder
+
+
+
+
+
+================================
+New Loss (Correspondence-wise Losses)
+================================
+for using Correspondence-wise Losses
+python main.py -i <data_path> --loss corr_wise
+for using Ensemble  (MSE{Correspondence-wise Losses)
+python main.py -i <data_path> --loss ensemble
 
 
 
@@ -350,6 +364,9 @@ Application to the study of the visual system
 ================================
 Illusory Motion Reproduced by Deep Neural Networks Trained for Prediction
 https://doi.org/10.3389/fpsyg.2018.00345
+
+
+
 
 
 
